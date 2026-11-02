@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <poll.h>
@@ -3716,14 +3717,119 @@ static void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t se
         orig->leave(data, keyboard, serial, surface);
 }
 
+/*
+ * LG's webOS 5/6 compositor includes private remote-control keycodes in its
+ * XKB keymap (for example 0x5030). xkbcommon rejects the WHOLE keymap when
+ * any keycode is >= 0x1000, leaving GDK without a usable keyboard map. Keep
+ * the standard keys and remove only those out-of-range private entries.
+ *
+ * The Wayland keymap fd is an owned, seekable fd. If we rewrite it, pass a
+ * fresh unlinked temporary fd to GDK and close the original here; GDK owns
+ * and closes the fd passed to its keymap callback, as required by Wayland.
+ */
+static int keyboard_keymap_sanitize(int fd, uint32_t size)
+{
+    char *src, *dst, *line, *end;
+    size_t used = 0, out = 0;
+    int changed = 0, tmpfd = -1;
+    char tmpname[] = "/tmp/webos-xkb-XXXXXX";
+
+    if (fd < 0 || size == 0 || size > 1024 * 1024)
+        return -1;
+    src = malloc((size_t)size + 1);
+    dst = malloc((size_t)size + 1);
+    if (!src || !dst)
+        goto done;
+    while (used < size) {
+        ssize_t n = pread(fd, src + used, size - used, (off_t)used);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            goto done;
+        used += (size_t)n;
+    }
+    src[size] = '\0';
+
+    line = src;
+    while (line < src + size) {
+        char *nl = memchr(line, '\n', (size_t)(src + size - line));
+        size_t len = nl ? (size_t)(nl + 1 - line) : (size_t)(src + size - line);
+        char *eq = memchr(line, '=', len);
+        int drop = 0;
+
+        if (eq && memchr(line, '<', (size_t)(eq - line))) {
+            char *p = eq + 1;
+            unsigned long value;
+            while (p < line + len && (*p == ' ' || *p == '\t'))
+                p++;
+            if (p < line + len && (isdigit((unsigned char)*p) || *p == '0')) {
+                errno = 0;
+                value = strtoul(p, &end, 0);
+                if (end != p && errno == 0 && value >= 0x1000)
+                    drop = 1;
+            }
+        }
+        if (drop) {
+            changed = 1;
+            log_msg("XKB: removed private keycode declaration (value >= 0x1000)");
+        } else {
+            memcpy(dst + out, line, len);
+            out += len;
+        }
+        line += len;
+    }
+    if (!changed)
+        goto done;
+
+    tmpfd = mkstemp(tmpname);
+    if (tmpfd < 0)
+        goto done;
+    unlink(tmpname);
+    used = 0;
+    while (used < out) {
+        ssize_t n = write(tmpfd, dst + used, out - used);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0) {
+            close(tmpfd);
+            tmpfd = -1;
+            goto done;
+        }
+        used += (size_t)n;
+    }
+    if (lseek(tmpfd, 0, SEEK_SET) < 0) {
+        close(tmpfd);
+        tmpfd = -1;
+    }
+
+done:
+    free(src);
+    free(dst);
+    return tmpfd;
+}
+
 static void keyboard_keymap(void *data, struct wl_keyboard *keyboard, uint32_t format,
                             int32_t fd, uint32_t size)
 {
     struct hook *hook = hook_find(keyboard_hooks, keyboard);
     const struct wl_keyboard_listener *orig = hook ? hook->listener : NULL;
+    int clean_fd = -1;
 
+    if (format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
+        clean_fd = keyboard_keymap_sanitize(fd, size);
+    if (clean_fd >= 0) {
+        close(fd);
+        log_msg("XKB: passed sanitized keymap to GDK (%u bytes)", size);
+        if (orig && orig->keymap)
+            orig->keymap(data, keyboard, format, clean_fd, size);
+        else
+            close(clean_fd);
+        return;
+    }
     if (orig && orig->keymap)
         orig->keymap(data, keyboard, format, fd, size);
+    else if (fd >= 0)
+        close(fd);
 }
 
 static void keyboard_key(void *data, struct wl_keyboard *keyboard, uint32_t serial,
