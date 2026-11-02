@@ -92,8 +92,12 @@ jobs:
           mkdir -p /tmp/ipk-check
           cd /tmp/ipk-check
           ar x "$GITHUB_WORKSPACE/$ipk"
-          tar -tzf data.tar.gz > /tmp/ipk-files.txt
+          tar -xzf data.tar.gz -C /tmp/ipk-check
+          find /tmp/ipk-check -type f > /tmp/ipk-files.txt
           grep -q 'firefox-runtime/libwayland-client.so.0' /tmp/ipk-files.txt
+          pref="$(find /tmp/ipk-check -path '*/defaults/pref/10-webos-video.js' -print -quit)"
+          test -n "$pref"
+          grep -q 'pref("media.mediasource.vp9.enabled", false)' "$pref"
           echo "Built package: $ipk"
           sha256sum "$GITHUB_WORKSPACE/$ipk"
 
