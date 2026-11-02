@@ -89,7 +89,8 @@ jobs:
           mkdir -p /tmp/ipk-check
           cd /tmp/ipk-check
           ar x "$GITHUB_WORKSPACE/$ipk"
-          tar -tzf data.tar.gz | grep -q 'firefox-runtime/libwayland-client.so.0'
+          tar -tzf data.tar.gz > /tmp/ipk-files.txt
+          grep -q 'firefox-runtime/libwayland-client.so.0' /tmp/ipk-files.txt
           echo "Built package: $ipk"
           sha256sum "$GITHUB_WORKSPACE/$ipk"
 
