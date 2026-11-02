@@ -53,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/base-ipk
+          cp "$GITHUB_WORKSPACE/build/webos5-video-prefs.js" /tmp/webos5-video-prefs.js
           curl -fL --retry 3 \
             https://github.com/gprot42/webos-firefox/releases/download/v0.1.29/com.github.gprot42.geckotv_0.1.29_arm.ipk \
             -o /tmp/firefox-base.ipk
@@ -66,6 +67,8 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/app"
           mkdir -p "$GITHUB_WORKSPACE/app"
           cp -a "$app_dir/." "$GITHUB_WORKSPACE/app/"
+          mkdir -p "$GITHUB_WORKSPACE/app/defaults/pref"
+          cp /tmp/webos5-video-prefs.js "$GITHUB_WORKSPACE/app/defaults/pref/10-webos-video.js"
 
       - name: Build patched ARM32 Wayland adapter
         shell: bash
