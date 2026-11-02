@@ -3727,7 +3727,7 @@ static void keyboard_leave(void *data, struct wl_keyboard *keyboard, uint32_t se
  * fresh unlinked temporary fd to GDK and close the original here; GDK owns
  * and closes the fd passed to its keymap callback, as required by Wayland.
  */
-static int keyboard_keymap_sanitize(int fd, uint32_t size)
+static int keyboard_keymap_sanitize(int fd, uint32_t size, uint32_t *clean_size)
 {
     char *src, *dst, *line, *end;
     size_t used = 0, out = 0;
@@ -3800,6 +3800,8 @@ static int keyboard_keymap_sanitize(int fd, uint32_t size)
     if (lseek(tmpfd, 0, SEEK_SET) < 0) {
         close(tmpfd);
         tmpfd = -1;
+    } else if (clean_size) {
+        *clean_size = (uint32_t)out;
     }
 
 done:
@@ -3814,14 +3816,15 @@ static void keyboard_keymap(void *data, struct wl_keyboard *keyboard, uint32_t f
     struct hook *hook = hook_find(keyboard_hooks, keyboard);
     const struct wl_keyboard_listener *orig = hook ? hook->listener : NULL;
     int clean_fd = -1;
+    uint32_t clean_size = size;
 
     if (format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
-        clean_fd = keyboard_keymap_sanitize(fd, size);
+        clean_fd = keyboard_keymap_sanitize(fd, size, &clean_size);
     if (clean_fd >= 0) {
         close(fd);
-        log_msg("XKB: passed sanitized keymap to GDK (%u bytes)", size);
+        log_msg("XKB: passed sanitized keymap to GDK (%u -> %u bytes)", size, clean_size);
         if (orig && orig->keymap)
-            orig->keymap(data, keyboard, format, clean_fd, size);
+            orig->keymap(data, keyboard, format, clean_fd, clean_size);
         else
             close(clean_fd);
         return;
