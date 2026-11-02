@@ -35,7 +35,7 @@ jobs:
             -o /tmp/webos-sdk.tar.gz
           echo "2230a6351e5cce6fcb9d4fdcb4697335f223995401ef969c81744aaeb14c5344  /tmp/webos-sdk.tar.gz" | sha256sum -c -
           tar -xzf /tmp/webos-sdk.tar.gz -C /work/nc4/out
-          compiler="$(find /work/nc4/out -type f -name arm-webos-linux-gnueabi-gcc -print -quit)"
+          compiler="$(find /work/nc4/out -name arm-webos-linux-gnueabi-gcc -print -quit)"
           test -n "$compiler"
           host_dir="$(dirname "$(dirname "$compiler")")"
           sdk_dir="$(dirname "$host_dir")"
