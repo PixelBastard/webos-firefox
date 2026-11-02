@@ -28,7 +28,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /work/nc4/out
+          sudo mkdir -p /work/nc4/out
+          sudo chown -R "$USER":"$USER" /work
           curl -fL --retry 3 \
             https://github.com/openlgtv/buildroot-nc4/releases/download/2026.08-webos/arm-webos-linux-gnueabi_sdk-buildroot-x86_64.tar.gz \
             -o /tmp/webos-sdk.tar.gz
@@ -70,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ln -s "$GITHUB_WORKSPACE" /src
+          sudo ln -s "$GITHUB_WORKSPACE" /src
           CROSS=nc4 OUT="$GITHUB_WORKSPACE/app/firefox-runtime" \
             bash "$GITHUB_WORKSPACE/build/build-adapter.sh"
           file "$GITHUB_WORKSPACE/app/firefox-runtime/libwayland-client.so.0"
