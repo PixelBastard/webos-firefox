@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ar binutils build-essential ca-certificates curl file libwayland-bin \
+            binutils build-essential ca-certificates curl file libwayland-bin \
             meson ninja-build pkg-config python3 wayland-protocols xz-utils
 
       - name: Download and relocate the matching webOS ARM SDK
