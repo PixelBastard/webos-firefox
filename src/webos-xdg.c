@@ -2755,24 +2755,36 @@ static int ascii_key(char ch, uint32_t *code, int *shift)
 static void inject_key(uint32_t code, int shift)
 {
     const struct wl_keyboard_listener *keys;
-    uint32_t serial;
+    struct hook *focus = focused_keys;
+    struct wl_keyboard *keyboard;
+    uint32_t serial, time;
 
-    if (!focused_keys || !focused_keys->listener)
+    if (!focus || !focus->listener) {
+        static unsigned no_focus_reports;
+        if (no_focus_reports++ < 8)
+            log_msg("input: dropped keycode %u (no focused wl_keyboard listener)", code);
         return;
-    keys = focused_keys->listener;
-    if (!keys->key)
+    }
+    keys = focus->listener;
+    if (!keys->key) {
+        static unsigned no_key_reports;
+        if (no_key_reports++ < 8)
+            log_msg("input: dropped keycode %u (listener has no key callback)", code);
         return;
+    }
+    keyboard = (struct wl_keyboard *)focus->proxy;
+    time = (uint32_t)now_ms();
+
+    /* GDK turns these callbacks into real key events. A zero timestamp and
+     * one reused serial for press/release are not valid event metadata and
+     * can make GTK discard or mis-order synthetic text-input events. */
+    if (shift && keys->modifiers)
+        keys->modifiers(focus->data, keyboard, ++g.serial, 1, 0, 0, 0);
     serial = ++g.serial;
+    keys->key(focus->data, keyboard, serial, time, code, WL_KEYBOARD_KEY_STATE_PRESSED);
+    keys->key(focus->data, keyboard, ++g.serial, time, code, WL_KEYBOARD_KEY_STATE_RELEASED);
     if (shift && keys->modifiers)
-        keys->modifiers(focused_keys->data, (struct wl_keyboard *)focused_keys->proxy,
-                        serial, 1, 0, 0, 0);
-    keys->key(focused_keys->data, (struct wl_keyboard *)focused_keys->proxy,
-              serial, 0, code, WL_KEYBOARD_KEY_STATE_PRESSED);
-    keys->key(focused_keys->data, (struct wl_keyboard *)focused_keys->proxy,
-              serial, 0, code, WL_KEYBOARD_KEY_STATE_RELEASED);
-    if (shift && keys->modifiers)
-        keys->modifiers(focused_keys->data, (struct wl_keyboard *)focused_keys->proxy,
-                        serial, 0, 0, 0, 0);
+        keys->modifiers(focus->data, keyboard, ++g.serial, 0, 0, 0, 0);
 }
 
 static void inject_text(const char *text)
